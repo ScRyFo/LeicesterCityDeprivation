@@ -4,9 +4,8 @@
 
 year <- 2025
 
-domain <- "Income_score"  
-# Options (depending on dataset):
-# "income_score", "health_score", "crime_score", etc.
+domain <- "income_score"  
+# Try: "income_score", "health_score", "crime_score"
 
 selected_wards <- c(
   "Eyres Monsell",
@@ -16,7 +15,7 @@ selected_wards <- c(
   "Knighton"
 )
 
-file_path <- paste0("data/deprivation-in-leicester-", year, ".xlsx", )
+file_path <- paste0("data/deprivation-in-leicester-", year, ".xlsx")
 
 # ================================
 # 2. LOAD PACKAGES
@@ -33,30 +32,28 @@ library(janitor)
 imd <- read_excel(file_path, col_names = TRUE) %>%
   clean_names()
 
-# Check columns if needed
-# names(imd)
-
 # ================================
-# 4. VALIDATE DOMAIN COLUMN
+# 4. VALIDATE REQUIRED COLUMNS
 # ================================
 
-if (!(domain %in% names(imd))) {
-  stop(paste("Column", domain, "not found in dataset"))
+required_cols <- c("lsoa_name", "ward", domain)
+
+missing_cols <- setdiff(required_cols, names(imd))
+
+if (length(missing_cols) > 0) {
+  stop(paste("Missing columns:", paste(missing_cols, collapse = ", ")))
 }
 
 # ================================
-# 5. SELECT REQUIRED VARIABLES
+# 5. SELECT & PREP DATA
 # ================================
 
 imd_selected <- imd %>%
   select(
-    'LSOA name',
-    Ward,
+    lsoa_name,
+    ward,
     all_of(domain)
-  )
-
-# Rename domain column to generic name
-imd_selected <- imd_selected %>%
+  ) %>%
   rename(score = all_of(domain))
 
 # ================================
@@ -67,6 +64,7 @@ ward_data <- imd_selected %>%
   group_by(ward) %>%
   summarise(
     mean_score = mean(score, na.rm = TRUE),
+    n_lsoas = n(),
     .groups = "drop"
   )
 
@@ -87,7 +85,7 @@ plot_data <- ward_z %>%
   filter(ward %in% selected_wards)
 
 # ================================
-# 9. PLOT
+# 9. PLOT (SINGLE DOMAIN)
 # ================================
 
 ggplot(plot_data, aes(x = z_score, y = reorder(ward, z_score))) +
@@ -102,28 +100,35 @@ ggplot(plot_data, aes(x = z_score, y = reorder(ward, z_score))) +
   theme_minimal()
 
 # ================================
-# 10. OPTIONAL: MULTI-DOMAIN COMPARISON
+# 10. MULTI-DOMAIN COMPARISON
 # ================================
 
+multi_domains <- c("income_score", "health_score")
+
+# Check they exist
+missing_multi <- setdiff(multi_domains, names(imd))
+if (length(missing_multi) > 0) {
+  stop(paste("Missing multi-domain columns:", paste(missing_multi, collapse = ", ")))
+}
+
 multi_domain <- imd %>%
-  select(
-    ward,
-    income_score,
-    health_score
-  ) %>%
+  select(ward, all_of(multi_domains)) %>%
   group_by(ward) %>%
   summarise(
-    income_mean = mean(income_score, na.rm = TRUE),
-    health_mean = mean(health_score, na.rm = TRUE),
+    across(everything(), ~ mean(.x, na.rm = TRUE)),
     .groups = "drop"
   ) %>%
   mutate(
-    income_z = (income_mean - mean(income_mean)) / sd(income_mean),
-    health_z = (health_mean - mean(health_mean)) / sd(health_mean)
+    across(
+      all_of(multi_domains),
+      ~ (.x - mean(.x)) / sd(.x),
+      .names = "{.col}_z"
+    )
   ) %>%
+  select(ward, ends_with("_z")) %>%
   filter(ward %in% selected_wards) %>%
   pivot_longer(
-    cols = c(income_z, health_z),
+    cols = -ward,
     names_to = "domain",
     values_to = "z_score"
   )
@@ -132,8 +137,8 @@ ggplot(multi_domain, aes(x = z_score, y = ward, fill = domain)) +
   geom_col(position = "dodge") +
   geom_vline(xintercept = 0, linetype = "dashed") +
   labs(
-    title = paste("Income vs Health Deprivation -", year),
-    x = "Z-score",
+    title = paste("Multi-Domain Deprivation Comparison -", year),
+    x = "Z-score (standardised)",
     y = "Ward"
   ) +
   theme_minimal()
