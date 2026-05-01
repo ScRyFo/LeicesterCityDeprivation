@@ -2,7 +2,7 @@
 # 0. INSTALL PACKAGES
 # ================================
 
-install.packages("tidyverse","readxl","janitor","ggtext")
+# install.packages("tidyverse","readxl","janitor","ggtext")
 # Once downloaded, hashtag the line when running the script
 
 # ================================
@@ -13,7 +13,7 @@ year <- 2025
 domain <- "income_score"  
 # Try: "income_score", "health_score", "crime_score"
 
-#population_col <- "pop_2022"
+population_col <- "pop_2022"
 # If you want population-weighted, change this to the most up-to-date population
 # reference.
 # Some IMD domains refer to smaller subsets of the population, so caution
@@ -71,12 +71,12 @@ imd_selected <- imd %>%
   select(
     lsoa_name,
     ward,
-    #all_of(population_col),
+    all_of(population_col),
     all_of(domain)
   ) %>%
   rename(
     score = all_of(domain),
-    #population = all_of(population_col)
+    population = all_of(population_col)
   )
 
 # ================================
@@ -108,81 +108,10 @@ plot_data <- ward_z %>%
   filter(ward %in% selected_wards)
 
 # ================================
-# 9. FINAL PRESENTATION PLOT
-# ================================
-
-plot_data <- multi_domain %>%
-  mutate(
-    domain_label = case_when(
-      domain == "income_z" ~ "Income Deprivation",
-      domain == "health_z" ~ "Health Deprivation"
-    )
-  )
-
-ggplot(plot_data, aes(x = z_score, y = reorder(ward, z_score), fill = domain_label)) +
-  
-  # Bars
-  geom_col(position = position_dodge(width = 0.7), width = 0.6) +
-  
-  # Value labels at end of bars
-  geom_text(
-    aes(label = round(z_score, 2)),
-    position = position_dodge(width = 0.7),
-    hjust = ifelse(plot_data$z_score > 0, -0.2, 1.2),
-    size = 4
-  ) +
-  
-  # Zero reference line
-  geom_vline(xintercept = 0, linetype = "dashed", colour = "black") +
-  
-  # Custom colours
-  scale_fill_manual(
-    values = c(
-      "Income Deprivation" = "#2C7FB8",   # blue
-      "Health Deprivation" = "#F28E2B"    # orange
-    )
-  ) +
-  
-  # Remove legend
-  guides(fill = "none") +
-  
-  # Remove x-axis completely
-  theme_minimal() +
-  theme(
-    axis.title.x = element_blank(),
-    axis.text.x  = element_blank(),
-    axis.ticks.x = element_blank(),
-    
-    # Improve spacing for labels outside bars
-    plot.margin = margin(10, 40, 10, 10),
-    
-    # Title styling (allows coloured text)
-    plot.title = element_markdown(size = 16, face = "bold")
-  ) +
-  
-  # Expand limits so labels don’t get cut off
-  expand_limits(x = max(plot_data$z_score) + 0.5) +
-  
-  # Title with embedded legend
-  labs(
-    title = paste0(
-      "<span style='color:#2C7FB8;'>Income Deprivation</span> and ",
-      "<span style='color:#F28E2B;'>Health Deprivation</span> by Ward in Leicester"
-    ),
-    y = "Ward"
-  )
-
-# ================================
-# 10. MULTI-DOMAIN COMPARISON
+# 9. MULTI-DOMAIN COMPARISON
 # ================================
 
 multi_domains <- c("income_score", "health_score")
-
-# Check they exist
-missing_multi <- setdiff(multi_domains, names(imd))
-if (length(missing_multi) > 0) {
-  stop(paste("Missing multi-domain columns:", paste(missing_multi, collapse = ", ")))
-}
 
 multi_domain <- imd %>%
   select(ward, all_of(multi_domains)) %>%
@@ -198,23 +127,92 @@ multi_domain <- imd %>%
       .names = "{.col}_z"
     )
   ) %>%
-  select(ward, ends_with("_z")) %>%
-  filter(ward %in% selected_wards) %>%
   pivot_longer(
-    cols = -ward,
+    cols = ends_with("_z"),
     names_to = "domain",
     values_to = "z_score"
+  ) %>%
+  mutate(
+    domain_label = case_when(
+      domain == "income_score_z" ~ "Income Deprivation",
+      domain == "health_score_z" ~ "Health Deprivation"
+    )
   )
 
-ggplot(multi_domain, aes(x = z_score, y = ward, fill = domain)) +
-  geom_col(position = "dodge") +
-  geom_vline(xintercept = 0, linetype = "dashed") +
-  labs(
-    title = paste("Multi-Domain Deprivation Comparison -", year),
-    x = "Z-score (standardised)",
-    y = "Ward"
+# Optional: filter wards AFTER computing both domains
+multi_domain <- multi_domain %>%
+  filter(ward %in% selected_wards)
+
+# Optional: sort order by income deprivation, highest to lowest
+multi_domain <- multi_domain %>%
+  group_by(ward) %>%
+  mutate(order_income = z_score[domain_label == "Income Deprivation"]) %>%
+  ungroup()
+
+# ================================
+# 10. FINAL PRESENTATION PLOT
+# ================================
+
+ggplot(multi_domain, aes(
+  x = z_score,
+  y = reorder(ward, order_income),
+  fill = domain_label
+)) +
+  
+  geom_col(position = position_dodge(width = 0.7), width = 0.7) +
+  
+  geom_text(
+    aes(
+      label = sprintf("%.2f", z_score),
+      hjust = ifelse(z_score > 0, -0.15, 1.15),
+      group = domain_label
+    ),
+    position = position_dodge(width = 0.7),
+    size = 4,
+    fontface = "bold"
   ) +
-  theme_minimal()
+  
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "black") +
+  
+  scale_fill_manual(
+    values = c(
+      "Income Deprivation" = "#1f4e79",
+      "Health Deprivation" = "#e46c0a"
+    )
+  ) +
+  
+  scale_x_continuous(expand = expansion(mult = c(0.2, 0.3))) +
+  
+  guides(fill = "none") +
+  
+  theme_classic() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x  = element_blank(),
+    axis.ticks.x = element_blank(),
+    
+    axis.text.y = element_text(size = 11, face = "bold", colour = "black"),
+    
+    plot.margin = margin(10, 40, 10, 10),
+    
+    plot.title = element_markdown(
+      size = 18,
+      face = "bold",
+      hjust = 0.5
+    ),
+    
+    axis.line = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank()
+  ) +
+  
+  labs(
+    title = paste0(
+      "<span style='color:#1f4e79;'>Income Deprivation</span> and ",
+      "<span style='color:#e46c0a;'>Health Deprivation</span> by Ward in Leicester"
+    ),
+    y = NULL
+  )
 
 # ================================
 # 11. DATA VALIDATION CHECKS
@@ -248,17 +246,17 @@ Check for data scaling issues.")
 }
 
 # ---- Check 4: Population weighting sanity (if used) ----
-#if ("population" %in% names(imd_selected)) {
+if ("population" %in% names(imd_selected)) {
   
-  #if (any(is.na(imd_selected$population))) {
-   # warning("WARNING: Missing population values detected. 
-#Weighted means may be inaccurate.")
-#  }
+  if (any(is.na(imd_selected$population))) {
+    warning("WARNING: Missing population values detected. 
+Weighted means may be inaccurate.")
+  }
   
- # if (any(imd_selected$population <= 0)) {
- #   stop("ERROR: Invalid population values (<= 0) detected.")
-#  }
-#}
+  if (any(imd_selected$population <= 0)) {
+    stop("ERROR: Invalid population values (<= 0) detected.")
+  }
+}
 
 # ---- Check 5: Domain column validation ----
 if (!"score" %in% names(imd_selected)) {
