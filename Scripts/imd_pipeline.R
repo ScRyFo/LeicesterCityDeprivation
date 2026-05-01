@@ -7,13 +7,25 @@ year <- 2025
 domain <- "income_score"  
 # Try: "income_score", "health_score", "crime_score"
 
-selected_wards <- c(
-  "Eyres Monsell",
-  "Wycliffe",
-  "Evington",
-  "Western",
-  "Knighton"
-)
+population_col <- "pop_2022"
+# If you want population-weighted, change this to the most up-to-date population
+# reference.
+# Some IMD domains refer to smaller subsets of the population, so caution
+# needs to be taken when analysing the data.
+
+selected_wards <- unique(c(
+  # extremes
+  ward_z %>% arrange(desc(z_score)) %>% slice(1:2) %>% pull(ward),
+  ward_z %>% arrange(z_score) %>% slice(1:2) %>% pull(ward),
+  
+  # middle
+  ward_z %>%
+    mutate(distance = abs(z_score)) %>%
+    arrange(distance) %>%
+    slice(1:1) %>%
+    pull(ward)
+))
+# Automates which Wards to plot based on the most and least deprived.
 
 file_path <- paste0("data/deprivation-in-leicester-", year, ".xlsx")
 
@@ -52,9 +64,13 @@ imd_selected <- imd %>%
   select(
     lsoa_name,
     ward,
+    all_of(population_col),
     all_of(domain)
   ) %>%
-  rename(score = all_of(domain))
+  rename(
+    score = all_of(domain),
+    population = all_of(population_col)
+  )
 
 # ================================
 # 6. AGGREGATE TO WARD LEVEL
@@ -63,7 +79,7 @@ imd_selected <- imd %>%
 ward_data <- imd_selected %>%
   group_by(ward) %>%
   summarise(
-    mean_score = mean(score, na.rm = TRUE),
+    mean_score = weighted.mean(score, population, na.rm = TRUE),
     n_lsoas = n(),
     .groups = "drop"
   )
@@ -142,3 +158,56 @@ ggplot(multi_domain, aes(x = z_score, y = ward, fill = domain)) +
     y = "Ward"
   ) +
   theme_minimal()
+
+# ================================
+# 11. DATA VALIDATION CHECKS
+# ================================
+
+# Purpose:
+# Ensure the dataset is valid before producing outputs.
+# These checks prevent silent errors and improve reproducibility.
+
+# ---- Check 1: Missing values in key variables ----
+if (any(is.na(plot_data$z_score))) {
+  stop("ERROR: Missing values detected in z_score. 
+Check standardisation or input data.")
+}
+
+if (any(is.na(plot_data$ward))) {
+  stop("ERROR: Missing values detected in ward names. 
+Check data import and cleaning steps.")
+}
+
+# ---- Check 2: Ensure sufficient number of wards ----
+if (nrow(plot_data) < 3) {
+  stop("ERROR: Too few wards selected. 
+Check filtering or selection logic.")
+}
+
+# ---- Check 3: Check z-score range (sanity check) ----
+if (any(plot_data$z_score < -5 | plot_data$z_score > 5)) {
+  warning("WARNING: Unusual z-score values detected. 
+Check for data scaling issues.")
+}
+
+# ---- Check 4: Population weighting sanity (if used) ----
+if ("population" %in% names(imd_selected)) {
+  
+  if (any(is.na(imd_selected$population))) {
+    warning("WARNING: Missing population values detected. 
+Weighted means may be inaccurate.")
+  }
+  
+  if (any(imd_selected$population <= 0)) {
+    stop("ERROR: Invalid population values (<= 0) detected.")
+  }
+}
+
+# ---- Check 5: Domain column validation ----
+if (!"score" %in% names(imd_selected)) {
+  stop("ERROR: Score column not found. 
+Check domain selection step.")
+}
+
+# ---- Final confirmation ----
+message("Data validation passed: dataset is clean and ready for analysis.")
