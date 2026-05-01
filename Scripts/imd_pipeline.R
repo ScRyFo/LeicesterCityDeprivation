@@ -4,7 +4,7 @@
 
 year <- 2025
 
-domain <- "income_score"  
+domain <- "Income_score"  
 # Options (depending on dataset):
 # "income_score", "health_score", "crime_score", etc.
 
@@ -16,7 +16,7 @@ selected_wards <- c(
   "Knighton"
 )
 
-file_path <- paste0("data/deprivation-in-leicester-", year, ".xlsx")
+file_path <- paste0("data/deprivation-in-leicester-", year, ".xlsx", )
 
 # ================================
 # 2. LOAD PACKAGES
@@ -30,7 +30,7 @@ library(janitor)
 # 3. LOAD & CLEAN DATA
 # ================================
 
-imd <- read_excel(file_path) %>%
+imd <- read_excel(file_path, col_names = TRUE) %>%
   clean_names()
 
 # Check columns if needed
@@ -50,8 +50,8 @@ if (!(domain %in% names(imd))) {
 
 imd_selected <- imd %>%
   select(
-    lsoa_name,
-    ward,
+    'LSOA name',
+    Ward,
     all_of(domain)
   )
 
