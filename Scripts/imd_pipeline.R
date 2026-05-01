@@ -1,13 +1,19 @@
 # ================================
-# 1. SET PARAMETERS (EDIT THESE)
+# 0. INSTALL PACKAGES
 # ================================
 
+install.packages("tidyverse","readxl","janitor","ggtext")
+# Once downloaded, hashtag the line when running the script
+
+# ================================
+# 1. SET PARAMETERS (EDIT THESE)
+# ================================
 year <- 2025
 
 domain <- "income_score"  
 # Try: "income_score", "health_score", "crime_score"
 
-population_col <- "pop_2022"
+#population_col <- "pop_2022"
 # If you want population-weighted, change this to the most up-to-date population
 # reference.
 # Some IMD domains refer to smaller subsets of the population, so caution
@@ -33,9 +39,10 @@ file_path <- paste0("data/deprivation-in-leicester-", year, ".xlsx")
 # 2. LOAD PACKAGES
 # ================================
 
-library(tidyverse)
-library(readxl)
+library(tidyverse) # needed for the functions to manipulate and plot data
+library(readxl) # needed to read Excel spreadsheet data
 library(janitor)
+library(ggtext)  # needed for coloured title text
 
 # ================================
 # 3. LOAD & CLEAN DATA
@@ -64,12 +71,12 @@ imd_selected <- imd %>%
   select(
     lsoa_name,
     ward,
-    all_of(population_col),
+    #all_of(population_col),
     all_of(domain)
   ) %>%
   rename(
     score = all_of(domain),
-    population = all_of(population_col)
+    #population = all_of(population_col)
   )
 
 # ================================
@@ -79,7 +86,7 @@ imd_selected <- imd %>%
 ward_data <- imd_selected %>%
   group_by(ward) %>%
   summarise(
-    mean_score = weighted.mean(score, population, na.rm = TRUE),
+    mean_score = weighted.mean(score, na.rm = TRUE),
     n_lsoas = n(),
     .groups = "drop"
   )
@@ -101,19 +108,69 @@ plot_data <- ward_z %>%
   filter(ward %in% selected_wards)
 
 # ================================
-# 9. PLOT (SINGLE DOMAIN)
+# 9. FINAL PRESENTATION PLOT
 # ================================
 
-ggplot(plot_data, aes(x = z_score, y = reorder(ward, z_score))) +
-  geom_col(fill = "steelblue") +
-  geom_vline(xintercept = 0, linetype = "dashed") +
-  labs(
-    title = paste("Deprivation Analysis -", year),
-    subtitle = paste("Domain:", domain),
-    x = "Z-score (relative to Leicester average)",
-    y = "Ward"
+plot_data <- multi_domain %>%
+  mutate(
+    domain_label = case_when(
+      domain == "income_z" ~ "Income Deprivation",
+      domain == "health_z" ~ "Health Deprivation"
+    )
+  )
+
+ggplot(plot_data, aes(x = z_score, y = reorder(ward, z_score), fill = domain_label)) +
+  
+  # Bars
+  geom_col(position = position_dodge(width = 0.7), width = 0.6) +
+  
+  # Value labels at end of bars
+  geom_text(
+    aes(label = round(z_score, 2)),
+    position = position_dodge(width = 0.7),
+    hjust = ifelse(plot_data$z_score > 0, -0.2, 1.2),
+    size = 4
   ) +
-  theme_minimal()
+  
+  # Zero reference line
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "black") +
+  
+  # Custom colours
+  scale_fill_manual(
+    values = c(
+      "Income Deprivation" = "#2C7FB8",   # blue
+      "Health Deprivation" = "#F28E2B"    # orange
+    )
+  ) +
+  
+  # Remove legend
+  guides(fill = "none") +
+  
+  # Remove x-axis completely
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x  = element_blank(),
+    axis.ticks.x = element_blank(),
+    
+    # Improve spacing for labels outside bars
+    plot.margin = margin(10, 40, 10, 10),
+    
+    # Title styling (allows coloured text)
+    plot.title = element_markdown(size = 16, face = "bold")
+  ) +
+  
+  # Expand limits so labels don’t get cut off
+  expand_limits(x = max(plot_data$z_score) + 0.5) +
+  
+  # Title with embedded legend
+  labs(
+    title = paste0(
+      "<span style='color:#2C7FB8;'>Income Deprivation</span> and ",
+      "<span style='color:#F28E2B;'>Health Deprivation</span> by Ward in Leicester"
+    ),
+    y = "Ward"
+  )
 
 # ================================
 # 10. MULTI-DOMAIN COMPARISON
@@ -191,17 +248,17 @@ Check for data scaling issues.")
 }
 
 # ---- Check 4: Population weighting sanity (if used) ----
-if ("population" %in% names(imd_selected)) {
+#if ("population" %in% names(imd_selected)) {
   
-  if (any(is.na(imd_selected$population))) {
-    warning("WARNING: Missing population values detected. 
-Weighted means may be inaccurate.")
-  }
+  #if (any(is.na(imd_selected$population))) {
+   # warning("WARNING: Missing population values detected. 
+#Weighted means may be inaccurate.")
+#  }
   
-  if (any(imd_selected$population <= 0)) {
-    stop("ERROR: Invalid population values (<= 0) detected.")
-  }
-}
+ # if (any(imd_selected$population <= 0)) {
+ #   stop("ERROR: Invalid population values (<= 0) detected.")
+#  }
+#}
 
 # ---- Check 5: Domain column validation ----
 if (!"score" %in% names(imd_selected)) {
