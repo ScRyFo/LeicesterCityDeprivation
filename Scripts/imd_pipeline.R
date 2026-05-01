@@ -185,6 +185,43 @@ ggplot(multi_domain, aes(
   
   guides(fill = "none") +
   
+  annotate(
+    "segment",
+    x = min(multi_domain$z_score),
+    xend = max(multi_domain$z_score),
+    y = Inf,
+    yend = Inf,
+    arrow = arrow(ends = "both", length = unit(0.2, "cm")),
+    colour = "black",
+    linewidth = 0.8
+  ) +
+  
+  annotate(
+    "text",
+    x = min(multi_domain$z_score),
+    y = Inf,
+    label = "Better",
+    hjust = 1.1,
+    vjust = 0.5,
+    colour = "#2ca25f",
+    size = 3.5,
+    fontface = "bold"
+  ) +
+  
+  annotate(
+    "text",
+    x = max(multi_domain$z_score),
+    y = Inf,
+    label = "Worse",
+    hjust = -0.1,
+    vjust = 0.5,
+    colour = "#de2d26",
+    size = 3.5,
+    fontface = "bold"
+  ) +
+  
+  coord_cartesian(clip = "off") +
+  
   theme_classic() +
   theme(
     axis.title.x = element_blank(),
