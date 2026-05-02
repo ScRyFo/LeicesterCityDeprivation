@@ -173,7 +173,7 @@ ggplot(multi_domain, aes(
       group = domain_label
     ),
     position = position_dodge(width = 0.7),
-    size = 2,
+    size = 3,
     fontface = "bold"
   ) +
   
@@ -225,6 +225,8 @@ ggplot(multi_domain, aes(
   
   theme_classic() +
   theme(
+    axis.line = element_blank(),
+    axis.ticks = element_blank(),
     axis.title.x = element_blank(),
     axis.text.x  = element_blank(),
     axis.ticks.x = element_blank(),
