@@ -1,61 +1,59 @@
 # ================================
-# 0. INSTALL PACKAGES
+# 0. INSTALL PACKAGES (RUN ONCE)
 # ================================
 
-# install.packages("tidyverse","readxl","janitor","ggtext")
-# Once downloaded, hashtag the line when running the script
+# install.packages(c("tidyverse","readxl","janitor","ggtext","httr"))
 
 # ================================
-# 1. SET PARAMETERS (EDIT THESE)
+# 1. SET PARAMETERS
 # ================================
+
 year <- 2025
 
 domain <- "income_score"  
-# Try: "income_score", "health_score", "crime_score"
+multi_domains <- c("income_score", "health_score")
 
 population_col <- "pop_2022"
-# If you want population-weighted, change this to the most up-to-date population
-# reference.
-# Some IMD domains refer to smaller subsets of the population, so caution
-# needs to be taken when analysing the data.
 
-selected_wards <- unique(c(
-  # extremes
-  ward_z %>% arrange(desc(z_score)) %>% slice(1:2) %>% pull(ward),
-  ward_z %>% arrange(z_score) %>% slice(1:2) %>% pull(ward),
-  
-  # middle
-  ward_z %>%
-    mutate(distance = abs(z_score)) %>%
-    arrange(distance) %>%
-    slice(1:1) %>%
-    pull(ward)
-))
-# Automates which Wards to plot based on the most and least deprived.
+# Data source (Leicester open data)
+data_url <- "https://data.leicester.gov.uk/explore/dataset/deprivation-in-leicester-2025/download/?format=xlsx"
 
+# Local storage
+dir.create("data", showWarnings = FALSE)
 file_path <- paste0("data/deprivation-in-leicester-", year, ".xlsx")
 
 # ================================
-# 2. LOAD PACKAGES
+# 2. DOWNLOAD DATA (IF NOT EXISTING)
 # ================================
 
-library(tidyverse) # needed for the functions to manipulate and plot data
-library(readxl) # needed to read Excel spreadsheet data
+if (!file.exists(file_path)) {
+  message("Downloading IMD data...")
+  download.file(data_url, destfile = file_path, mode = "wb")
+} else {
+  message("Using existing local data file.")
+}
+
+# ================================
+# 3. LOAD PACKAGES
+# ================================
+
+library(tidyverse)
+library(readxl)
 library(janitor)
-library(ggtext)  # needed for coloured title text
+library(ggtext)
 
 # ================================
-# 3. LOAD & CLEAN DATA
+# 4. LOAD & CLEAN DATA
 # ================================
 
 imd <- read_excel(file_path, col_names = TRUE) %>%
   clean_names()
 
 # ================================
-# 4. VALIDATE REQUIRED COLUMNS
+# 5. VALIDATE REQUIRED COLUMNS
 # ================================
 
-required_cols <- c("lsoa_name", "ward", domain)
+required_cols <- c("lsoa_name", "ward_name", domain, population_col)
 
 missing_cols <- setdiff(required_cols, names(imd))
 
@@ -64,13 +62,13 @@ if (length(missing_cols) > 0) {
 }
 
 # ================================
-# 5. SELECT & PREP DATA
+# 6. SELECT & PREP DATA
 # ================================
 
 imd_selected <- imd %>%
   select(
     lsoa_name,
-    ward,
+    ward_name,
     all_of(population_col),
     all_of(domain)
   ) %>%
@@ -80,19 +78,19 @@ imd_selected <- imd %>%
   )
 
 # ================================
-# 6. AGGREGATE TO WARD LEVEL
+# 7. AGGREGATE TO WARD LEVEL
 # ================================
 
 ward_data <- imd_selected %>%
-  group_by(ward) %>%
+  group_by(ward_name) %>%
   summarise(
-    mean_score = weighted.mean(score, na.rm = TRUE),
+    mean_score = weighted.mean(score, population, na.rm = TRUE),
     n_lsoas = n(),
     .groups = "drop"
   )
 
 # ================================
-# 7. STANDARDISE (Z-SCORE)
+# 8. STANDARDISE (Z-SCORE)
 # ================================
 
 ward_z <- ward_data %>%
@@ -101,21 +99,31 @@ ward_z <- ward_data %>%
   )
 
 # ================================
-# 8. FILTER SELECTED WARDS
+# 9. AUTOMATIC WARD SELECTION
 # ================================
 
-plot_data <- ward_z %>%
-  filter(ward %in% selected_wards)
+selected_wards <- unique(c(
+  # most deprived
+  ward_z %>% arrange(desc(z_score)) %>% slice(1:2) %>% pull(ward_name),
+  
+  # least deprived
+  ward_z %>% arrange(z_score) %>% slice(1:2) %>% pull(ward_name),
+  
+  # closest to average
+  ward_z %>%
+    mutate(distance = abs(z_score)) %>%
+    arrange(distance) %>%
+    slice(1:1) %>%
+    pull(ward_name)
+))
 
 # ================================
-# 9. MULTI-DOMAIN COMPARISON
+# 10. MULTI-DOMAIN ANALYSIS
 # ================================
-
-multi_domains <- c("income_score", "health_score")
 
 multi_domain <- imd %>%
-  select(ward, all_of(multi_domains)) %>%
-  group_by(ward) %>%
+  select(ward_name, all_of(multi_domains)) %>%
+  group_by(ward_name) %>%
   summarise(
     across(everything(), ~ mean(.x, na.rm = TRUE)),
     .groups = "drop"
@@ -137,25 +145,22 @@ multi_domain <- imd %>%
       domain == "income_score_z" ~ "Income Deprivation",
       domain == "health_score_z" ~ "Health Deprivation"
     )
-  )
+  ) %>%
+  filter(ward_name %in% selected_wards)
 
-# Optional: filter wards AFTER computing both domains
+# Order by income deprivation
 multi_domain <- multi_domain %>%
-  filter(ward %in% selected_wards)
-
-# Optional: sort order by income deprivation, highest to lowest
-multi_domain <- multi_domain %>%
-  group_by(ward) %>%
+  group_by(ward_name) %>%
   mutate(order_income = z_score[domain_label == "Income Deprivation"]) %>%
   ungroup()
 
 # ================================
-# 10. FINAL PRESENTATION PLOT
+# 11. FINAL PRESENTATION PLOT
 # ================================
 
 ggplot(multi_domain, aes(
   x = z_score,
-  y = reorder(ward, order_income),
+  y = reorder(ward_name, order_income),
   fill = domain_label
 )) +
   
@@ -168,11 +173,11 @@ ggplot(multi_domain, aes(
       group = domain_label
     ),
     position = position_dodge(width = 0.7),
-    size = 4,
+    size = 2,
     fontface = "bold"
   ) +
   
-  geom_vline(xintercept = 0, linetype = "dashed", colour = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
   
   scale_fill_manual(
     values = c(
@@ -191,9 +196,7 @@ ggplot(multi_domain, aes(
     xend = max(multi_domain$z_score),
     y = Inf,
     yend = Inf,
-    arrow = arrow(ends = "both", length = unit(0.2, "cm")),
-    colour = "black",
-    linewidth = 0.8
+    arrow = arrow(ends = "both", length = unit(0.2, "cm"))
   ) +
   
   annotate(
@@ -202,9 +205,8 @@ ggplot(multi_domain, aes(
     y = Inf,
     label = "Better",
     hjust = 1.1,
-    vjust = 0.5,
     colour = "#2ca25f",
-    size = 3.5,
+    size = 3,
     fontface = "bold"
   ) +
   
@@ -214,9 +216,8 @@ ggplot(multi_domain, aes(
     y = Inf,
     label = "Worse",
     hjust = -0.1,
-    vjust = 0.5,
     colour = "#de2d26",
-    size = 3.5,
+    size = 3,
     fontface = "bold"
   ) +
   
@@ -227,20 +228,9 @@ ggplot(multi_domain, aes(
     axis.title.x = element_blank(),
     axis.text.x  = element_blank(),
     axis.ticks.x = element_blank(),
-    
-    axis.text.y = element_text(size = 11, face = "bold", colour = "black"),
-    
-    plot.margin = margin(10, 40, 10, 10),
-    
-    plot.title = element_markdown(
-      size = 18,
-      face = "bold",
-      hjust = 0.5
-    ),
-    
-    axis.line = element_blank(),
-    axis.ticks = element_blank(),
-    panel.grid = element_blank()
+    axis.text.y  = element_text(size = 11, face = "bold"),
+    plot.title   = element_markdown(size = 18, face = "bold", hjust = 0.5),
+    plot.margin  = margin(10, 40, 10, 10)
   ) +
   
   labs(
@@ -252,54 +242,27 @@ ggplot(multi_domain, aes(
   )
 
 # ================================
-# 11. DATA VALIDATION CHECKS
+# 12. DATA VALIDATION CHECKS
 # ================================
 
-# Purpose:
-# Ensure the dataset is valid before producing outputs.
-# These checks prevent silent errors and improve reproducibility.
-
-# ---- Check 1: Missing values in key variables ----
-if (any(is.na(plot_data$z_score))) {
-  stop("ERROR: Missing values detected in z_score. 
-Check standardisation or input data.")
+if (any(is.na(multi_domain$z_score))) {
+  stop("ERROR: Missing z-scores detected.")
 }
 
-if (any(is.na(plot_data$ward))) {
-  stop("ERROR: Missing values detected in ward names. 
-Check data import and cleaning steps.")
+if (any(is.na(multi_domain$ward_name))) {
+  stop("ERROR: Missing ward names detected.")
 }
 
-# ---- Check 2: Ensure sufficient number of wards ----
-if (nrow(plot_data) < 3) {
-  stop("ERROR: Too few wards selected. 
-Check filtering or selection logic.")
+if (nrow(multi_domain) < 3) {
+  stop("ERROR: Too few wards selected.")
 }
 
-# ---- Check 3: Check z-score range (sanity check) ----
-if (any(plot_data$z_score < -5 | plot_data$z_score > 5)) {
-  warning("WARNING: Unusual z-score values detected. 
-Check for data scaling issues.")
+if (any(multi_domain$z_score < -5 | multi_domain$z_score > 5)) {
+  warning("WARNING: Unusual z-score values detected.")
 }
 
-# ---- Check 4: Population weighting sanity (if used) ----
-if ("population" %in% names(imd_selected)) {
-  
-  if (any(is.na(imd_selected$population))) {
-    warning("WARNING: Missing population values detected. 
-Weighted means may be inaccurate.")
-  }
-  
-  if (any(imd_selected$population <= 0)) {
-    stop("ERROR: Invalid population values (<= 0) detected.")
-  }
+if (any(imd_selected$population <= 0, na.rm = TRUE)) {
+  stop("ERROR: Invalid population values detected.")
 }
 
-# ---- Check 5: Domain column validation ----
-if (!"score" %in% names(imd_selected)) {
-  stop("ERROR: Score column not found. 
-Check domain selection step.")
-}
-
-# ---- Final confirmation ----
-message("Data validation passed: dataset is clean and ready for analysis.")
+message("Pipeline complete: data downloaded, processed, validated, and plotted.")
