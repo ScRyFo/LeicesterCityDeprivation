@@ -1,36 +1,28 @@
 # ================================
 # 0. INSTALL PACKAGES (RUN ONCE)
 # ================================
-
-# install.packages(c("tidyverse","readxl","janitor","ggtext","httr"))
+# install.packages(c("tidyverse","readxl","janitor","ggtext"))
 
 # ================================
-# 1. SET PARAMETERS
+# 1. PARAMETERS
 # ================================
 
 year <- 2025
 
-domain <- "income_score"  
 multi_domains <- c("income_score", "health_score")
-
 population_col <- "pop_2022"
 
-# Data source (Leicester open data)
 data_url <- "https://data.leicester.gov.uk/explore/dataset/deprivation-in-leicester-2025/download/?format=xlsx"
 
-# Local storage
 dir.create("data", showWarnings = FALSE)
 file_path <- paste0("data/deprivation-in-leicester-", year, ".xlsx")
 
 # ================================
-# 2. DOWNLOAD DATA (IF NOT EXISTING)
+# 2. DOWNLOAD DATA
 # ================================
 
 if (!file.exists(file_path)) {
-  message("Downloading IMD data...")
-  download.file(data_url, destfile = file_path, mode = "wb")
-} else {
-  message("Using existing local data file.")
+  download.file(data_url, file_path, mode = "wb")
 }
 
 # ================================
@@ -46,79 +38,22 @@ library(ggtext)
 # 4. LOAD & CLEAN DATA
 # ================================
 
-imd <- read_excel(file_path, col_names = TRUE) %>%
+imd <- read_excel(file_path) %>%
   clean_names()
 
 # ================================
-# 5. VALIDATE REQUIRED COLUMNS
+# 5. VALIDATE COLUMNS
 # ================================
 
-required_cols <- c("lsoa_name", "ward_name", domain, population_col)
+required_cols <- c("ward_name", multi_domains)
 
-missing_cols <- setdiff(required_cols, names(imd))
-
-if (length(missing_cols) > 0) {
-  stop(paste("Missing columns:", paste(missing_cols, collapse = ", ")))
+missing <- setdiff(required_cols, names(imd))
+if (length(missing) > 0) {
+  stop(paste("Missing columns:", paste(missing, collapse = ", ")))
 }
 
 # ================================
-# 6. SELECT & PREP DATA
-# ================================
-
-imd_selected <- imd %>%
-  select(
-    lsoa_name,
-    ward_name,
-    all_of(population_col),
-    all_of(domain)
-  ) %>%
-  rename(
-    score = all_of(domain),
-    population = all_of(population_col)
-  )
-
-# ================================
-# 7. AGGREGATE TO WARD LEVEL
-# ================================
-
-ward_data <- imd_selected %>%
-  group_by(ward_name) %>%
-  summarise(
-    mean_score = weighted.mean(score, population, na.rm = TRUE),
-    n_lsoas = n(),
-    .groups = "drop"
-  )
-
-# ================================
-# 8. STANDARDISE (Z-SCORE)
-# ================================
-
-ward_z <- ward_data %>%
-  mutate(
-    z_score = (mean_score - mean(mean_score)) / sd(mean_score)
-  )
-
-# ================================
-# 9. AUTOMATIC WARD SELECTION
-# ================================
-
-selected_wards <- unique(c(
-  # most deprived
-  ward_z %>% arrange(desc(z_score)) %>% slice(1:2) %>% pull(ward_name),
-  
-  # least deprived
-  ward_z %>% arrange(z_score) %>% slice(1:2) %>% pull(ward_name),
-  
-  # closest to average
-  ward_z %>%
-    mutate(distance = abs(z_score)) %>%
-    arrange(distance) %>%
-    slice(1:1) %>%
-    pull(ward_name)
-))
-
-# ================================
-# 10. MULTI-DOMAIN ANALYSIS
+# 6. MULTI-DOMAIN PIPELINE
 # ================================
 
 multi_domain <- imd %>%
@@ -145,20 +80,62 @@ multi_domain <- imd %>%
       domain == "income_score_z" ~ "Income Deprivation",
       domain == "health_score_z" ~ "Health Deprivation"
     )
-  ) %>%
+  )
+
+# ================================
+# 7. SELECT WARDS (BASED ON INCOME)
+# ================================
+
+selected_wards <- multi_domain %>%
+  filter(domain_label == "Income Deprivation") %>%
+  arrange(desc(z_score)) %>%
+  slice(c(1:2, (n()-1):n(), round(n()/2))) %>%
+  pull(ward_name)
+
+multi_domain_plot <- multi_domain %>%
   filter(ward_name %in% selected_wards)
 
-# Order by income deprivation
-multi_domain <- multi_domain %>%
+# ================================
+# 8. ORDERING
+# ================================
+
+multi_domain_plot <- multi_domain_plot %>%
   group_by(ward_name) %>%
   mutate(order_income = z_score[domain_label == "Income Deprivation"]) %>%
   ungroup()
 
 # ================================
-# 11. FINAL PRESENTATION PLOT
+# 9. CORRELATION (ALL WARDS)
 # ================================
 
-ggplot(multi_domain, aes(
+cor_data <- multi_domain %>%
+  select(ward_name, domain_label, z_score) %>%
+  pivot_wider(names_from = domain_label, values_from = z_score)
+
+cor_all <- cor(
+  cor_data$`Income Deprivation`,
+  cor_data$`Health Deprivation`,
+  use = "complete.obs"
+)
+
+# Optional: correlation of selected wards only
+cor_selected <- cor(
+  multi_domain_plot %>%
+    select(ward_name, domain_label, z_score) %>%
+    pivot_wider(names_from = domain_label, values_from = z_score) %>%
+    pull(`Income Deprivation`),
+  
+  multi_domain_plot %>%
+    select(ward_name, domain_label, z_score) %>%
+    pivot_wider(names_from = domain_label, values_from = z_score) %>%
+    pull(`Health Deprivation`)
+)
+
+# ================================
+# 10. PLOT
+# ================================
+
+ggplot(multi_domain_plot, aes(
   x = z_score,
   y = reorder(ward_name, order_income),
   fill = domain_label
@@ -169,12 +146,10 @@ ggplot(multi_domain, aes(
   geom_text(
     aes(
       label = sprintf("%.2f", z_score),
-      hjust = ifelse(z_score > 0, -0.15, 1.15),
-      group = domain_label
+      hjust = ifelse(z_score > 0, -0.15, 1.15)
     ),
     position = position_dodge(width = 0.7),
-    size = 3,
-    fontface = "bold"
+    size = 3
   ) +
   
   geom_vline(xintercept = 0, linetype = "dashed") +
@@ -186,85 +161,45 @@ ggplot(multi_domain, aes(
     )
   ) +
   
-  scale_x_continuous(expand = expansion(mult = c(0.2, 0.3))) +
-  
   guides(fill = "none") +
   
-  annotate(
-    "segment",
-    x = min(multi_domain$z_score),
-    xend = max(multi_domain$z_score),
-    y = Inf,
-    yend = Inf,
-    arrow = arrow(ends = "both", length = unit(0.2, "cm"))
-  ) +
-  
-  annotate(
-    "text",
-    x = min(multi_domain$z_score),
-    y = Inf,
-    label = "Better",
-    hjust = 1.1,
-    colour = "#2ca25f",
-    size = 3,
-    fontface = "bold"
-  ) +
-  
-  annotate(
-    "text",
-    x = max(multi_domain$z_score),
-    y = Inf,
-    label = "Worse",
-    hjust = -0.1,
-    colour = "#de2d26",
-    size = 3,
-    fontface = "bold"
-  ) +
+  scale_x_continuous(expand = expansion(mult = c(0.2, 0.3))) +
   
   coord_cartesian(clip = "off") +
   
-  theme_classic() +
+  annotate(
+    "text",
+    x = max(multi_domain_plot$z_score) + 0.3,
+    y = -Inf,
+    label = paste0(
+      "r = ", round(cor_all, 2),
+      " (All wards in Leicester)"
+    ),
+    hjust = 1,
+    vjust = -1,
+    size = 2,
+    fontface = "italic"
+  ) +
+  
+  theme_minimal() +
   theme(
-    axis.line = element_blank(),
-    axis.ticks = element_blank(),
     axis.title.x = element_blank(),
     axis.text.x  = element_blank(),
     axis.ticks.x = element_blank(),
-    axis.text.y  = element_text(size = 11, face = "bold"),
-    plot.title   = element_markdown(size = 18, face = "bold", hjust = 0.5),
-    plot.margin  = margin(10, 40, 10, 10)
+    
+    axis.title.y = element_blank(),
+    
+    axis.line = element_blank(),
+    axis.ticks = element_blank(),
+    
+    plot.title = element_markdown(size = 16, face = "bold", hjust = 0.5),
+    
+    plot.margin = margin(10, 40, 20, 10)
   ) +
   
   labs(
     title = paste0(
       "<span style='color:#1f4e79;'>Income Deprivation</span> and ",
       "<span style='color:#e46c0a;'>Health Deprivation</span> by Ward in Leicester"
-    ),
-    y = NULL
+    )
   )
-
-# ================================
-# 12. DATA VALIDATION CHECKS
-# ================================
-
-if (any(is.na(multi_domain$z_score))) {
-  stop("ERROR: Missing z-scores detected.")
-}
-
-if (any(is.na(multi_domain$ward_name))) {
-  stop("ERROR: Missing ward names detected.")
-}
-
-if (nrow(multi_domain) < 3) {
-  stop("ERROR: Too few wards selected.")
-}
-
-if (any(multi_domain$z_score < -5 | multi_domain$z_score > 5)) {
-  warning("WARNING: Unusual z-score values detected.")
-}
-
-if (any(imd_selected$population <= 0, na.rm = TRUE)) {
-  stop("ERROR: Invalid population values detected.")
-}
-
-message("Pipeline complete: data downloaded, processed, validated, and plotted.")
