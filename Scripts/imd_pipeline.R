@@ -8,9 +8,7 @@
 # ================================
 
 year <- 2025
-
 multi_domains <- c("income_score", "health_score")
-population_col <- "pop_2022"
 
 data_url <- "https://data.leicester.gov.uk/explore/dataset/deprivation-in-leicester-2025/download/?format=xlsx"
 
@@ -42,7 +40,7 @@ imd <- read_excel(file_path) %>%
   clean_names()
 
 # ================================
-# 5. VALIDATE COLUMNS
+# 5. VALIDATE
 # ================================
 
 required_cols <- c("ward_name", multi_domains)
@@ -118,17 +116,15 @@ cor_all <- cor(
   use = "complete.obs"
 )
 
-# Optional: correlation of selected wards only
-cor_selected <- cor(
-  multi_domain_plot %>%
-    select(ward_name, domain_label, z_score) %>%
-    pivot_wider(names_from = domain_label, values_from = z_score) %>%
-    pull(`Income Deprivation`),
-  
-  multi_domain_plot %>%
-    select(ward_name, domain_label, z_score) %>%
-    pivot_wider(names_from = domain_label, values_from = z_score) %>%
-    pull(`Health Deprivation`)
+# ================================
+# 9.5 EFFECT SIZE + R²
+# ================================
+
+effect_size_label <- case_when(
+  abs(cor_all) < 0.1 ~ "negligible",
+  abs(cor_all) < 0.3 ~ "small",
+  abs(cor_all) < 0.5 ~ "moderate",
+  TRUE ~ "large"
 )
 
 # ================================
@@ -173,7 +169,8 @@ ggplot(multi_domain_plot, aes(
     y = -Inf,
     label = paste0(
       "r = ", round(cor_all, 2),
-      " (All wards in Leicester)"
+      " (", effect_size_label, ")\n",
+      "All wards in Leicester"
     ),
     hjust = 1,
     vjust = -1,
@@ -186,15 +183,13 @@ ggplot(multi_domain_plot, aes(
     axis.title.x = element_blank(),
     axis.text.x  = element_blank(),
     axis.ticks.x = element_blank(),
-    
     axis.title.y = element_blank(),
     
     axis.line = element_blank(),
     axis.ticks = element_blank(),
     
     plot.title = element_markdown(size = 16, face = "bold", hjust = 0.5),
-    
-    plot.margin = margin(10, 40, 20, 10)
+    plot.margin = margin(10, 40, 25, 10)
   ) +
   
   labs(
