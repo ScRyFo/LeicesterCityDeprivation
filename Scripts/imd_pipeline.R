@@ -286,3 +286,91 @@ ggplot(multi_domain_plot, aes(
     )
   )
 
+# ================================
+# 11. DATA VALIDATION & QA CHECKS
+# ================================
+
+message("Running validation checks...")
+
+# ---- 1. Check dataset loaded correctly ----
+if (!exists("imd") || nrow(imd) == 0) {
+  stop("ERROR: IMD dataset not loaded or empty.")
+}
+
+# ---- 2. Required columns exist ----
+required_cols <- c("ward_name", multi_domains)
+
+missing_cols <- setdiff(required_cols, names(imd))
+
+if (length(missing_cols) > 0) {
+  stop(paste("ERROR: Missing required columns:",
+             paste(missing_cols, collapse = ", ")))
+}
+
+# ---- 3. No missing ward names ----
+if (any(is.na(imd$ward_name))) {
+  stop("ERROR: Missing ward_name values detected.")
+}
+
+# ---- 4. Domain variables are numeric ----
+non_numeric <- multi_domains[!sapply(imd[multi_domains], is.numeric)]
+
+if (length(non_numeric) > 0) {
+  stop(paste("ERROR: Non-numeric domain columns detected:",
+             paste(non_numeric, collapse = ", ")))
+}
+
+# ---- 5. Check aggregation worked ----
+if (!exists("multi_domain") || nrow(multi_domain) == 0) {
+  stop("ERROR: multi_domain object not created correctly.")
+}
+
+# ---- 6. Check z-score calculation ----
+if (any(is.na(multi_domain$z_score))) {
+  stop("ERROR: Missing z_score values detected after standardisation.")
+}
+
+if (sd(multi_domain$z_score) == 0) {
+  stop("ERROR: z_score has zero variance (standardisation failed).")
+}
+
+# ---- 7. Check ward selection ----
+if (!exists("multi_domain_plot") || nrow(multi_domain_plot) == 0) {
+  stop("ERROR: No wards selected for plotting.")
+}
+
+if (length(unique(multi_domain_plot$ward_name)) < 3) {
+  stop("ERROR: Too few wards selected (minimum 3 required).")
+}
+
+# ---- 8. Check correlation validity ----
+if (!exists("cor_all") || is.na(cor_all)) {
+  stop("ERROR: Correlation could not be computed.")
+}
+
+if (abs(cor_all) > 1) {
+  stop("ERROR: Invalid correlation value (outside -1 to 1).")
+}
+
+# ---- 9. Logical consistency check ----
+# Income vs Health should typically be positively correlated
+if (cor_all < -0.3) {
+  warning("WARNING: Unexpected negative correlation between domains. Check data.")
+}
+
+# ---- 10. Extreme value sanity check ----
+if (any(abs(multi_domain$z_score) > 5)) {
+  warning("WARNING: Extreme z-scores detected (> |5|). Possible data issue.")
+}
+
+# ---- 11. Duplicate ward entries ----
+dup_wards <- multi_domain %>%
+  count(ward_name) %>%
+  filter(n > length(multi_domains))
+
+if (nrow(dup_wards) > 0) {
+  warning("WARNING: Duplicate ward entries detected after aggregation.")
+}
+
+# ---- 12. Final confirmation ----
+message("All validation checks passed ✅")
