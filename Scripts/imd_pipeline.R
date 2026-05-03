@@ -1,10 +1,14 @@
+# Please only edit Sections 0 and 1. The rest of the sections
+# should work without any editing
+
 # ================================
 # 0. INSTALL PACKAGES (RUN ONCE)
 # ================================
 # install.packages(c("tidyverse","readxl","janitor","ggtext"))
+# Unhash the line above if this is the first time you are using this script
 
 # ================================
-# 1.1 USER-SELECTION PARAMETERS (THE ONLY SECTION YOU SHOULD EDIT)
+# 1 USER-SELECTION PARAMETERS
 # ================================
 
 #year <- 2025
@@ -29,7 +33,7 @@ user_selected_wards <- c( # select as many or as few wards as you would like to 
 )
 
 # ============================================
-# 1.2 PARAMETER VALIDATION (DO NOT EDIT)
+# 2 PARAMETER VALIDATION (!DO NOT EDIT!)
 # ============================================
 
 if (!ward_selection_mode %in% c("auto", "manual")) {
@@ -41,7 +45,7 @@ if (!is.character(multi_domains_to_compare) || length(multi_domains_to_compare) 
 }
 
 # ================================
-# 2. DOWNLOAD DATA
+# 3. DOWNLOAD DATA
 # ================================
 
 data_url <- paste0(
@@ -61,7 +65,7 @@ if (!file.exists(file_path)) {
 }
 
 # ================================
-# 3. LOAD PACKAGES
+# 4. LOAD PACKAGES
 # ================================
 
 library(tidyverse)
@@ -70,14 +74,14 @@ library(janitor)
 library(ggtext)
 
 # ================================
-# 4. LOAD & CLEAN DATA
+# 5. LOAD & CLEAN DATA
 # ================================
 
 imd <- read_excel(file_path) %>%
   clean_names()
 
 # ================================
-# 5. VALIDATE INPUT
+# 6. VALIDATE INPUT
 # ================================
 
 required_cols <- c("ward_name", multi_domains_to_compare)
@@ -88,7 +92,7 @@ if (length(missing) > 0) {
 }
 
 # ================================
-# 6. MULTI-DOMAIN PIPELINE
+# 7. MULTI-DOMAIN PIPELINE
 # ================================
 
 multi_domain <- imd %>%
@@ -117,7 +121,7 @@ multi_domain <- imd %>%
   )
 
 # ================================
-# 7. SELECT WARDS (AUTO OR MANUAL)
+# 8. SELECT WARDS (AUTO OR MANUAL)
 # ================================
 
 reference_domain <- str_to_title(
@@ -165,7 +169,7 @@ multi_domain_plot <- multi_domain %>%
   filter(ward_name %in% selected_wards)
 
 # ================================
-# 8. ORDERING
+# 9. ORDERING
 # ================================
 
 multi_domain_plot <- multi_domain_plot %>%
@@ -174,7 +178,7 @@ multi_domain_plot <- multi_domain_plot %>%
   ungroup()
 
 # ================================
-# 9. CORRELATION
+# 10. CORRELATION
 # ================================
 
 if (length(multi_domains) == 2) {
@@ -198,7 +202,7 @@ if (length(multi_domains) == 2) {
 }
 
 # ================================
-# 10. COLOUR SETUP
+# 11. COLOUR SETUP
 # ================================
 
 domain_levels <- unique(multi_domain_plot$domain_label)
@@ -213,7 +217,7 @@ domain_colours <- setNames(
 )
 
 # ================================
-# 11. TITLE
+# 12. TITLE
 # ================================
 
 title_text <- paste0(
@@ -228,7 +232,7 @@ title_text <- paste0(
 )
 
 # ================================
-# 12. PLOT
+# 13. PLOT
 # ================================
 
 ggplot(multi_domain_plot, aes(
@@ -342,14 +346,14 @@ ggplot(multi_domain_plot, aes(
   )
 
 # ================================
-# 13. VALIDATION
+# 14. VALIDATION
 # ================================
 
 # This validation block ensures the analytical pipeline is robust to:
 # - Changes in IMD data structure
 # - Missing or malformed variables
 # - Statistical inconsistencies
-# It enforces reproducibility and prevents silent analytical errors.
+# It enforces reproducibility and prevents silent analytical errors
 
 message("Running checks...")
 
