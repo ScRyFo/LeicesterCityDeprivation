@@ -7,7 +7,7 @@ pipeline.
 
 -   Ward-level aggregation of LSOA data
 -   Z-score standardisation for comparability
--   Multi-domain analysis (Income, Health, Crime)
+-   Multi-domain analysis across IMD domains
 -   Fully reproducible workflow
 
 ## How to run
