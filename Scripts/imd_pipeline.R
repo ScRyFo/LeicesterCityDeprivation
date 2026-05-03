@@ -4,12 +4,13 @@
 # install.packages(c("tidyverse","readxl","janitor","ggtext"))
 
 # ================================
-# 1. PARAMETERS
+# 1.1 USER-SELECTION PARAMETERS (THE ONLY SECTION YOU SHOULD EDIT)
 # ================================
 
-year <- 2025
+#year <- 2025
+# Only relevant if the raw data has multiple years of data in it
 
-multi_domains <- c("income_score", "health_score")
+multi_domains_to_compare <- c("income_score", "health_score") # change these if necessary
 # Examples:
 # c("income_score", "crime_score")
 # c("idaci_score", "health_score")
@@ -17,15 +18,27 @@ multi_domains <- c("income_score", "health_score")
 # The sub-section below allows flexible ward selection:
 # - "auto": selects most/least/middle deprived wards
 # - "manual": user-defined wards
-# This improves reproducibility while enabling targeted analysis.
+# This improves reproducibility while enabling targeted analysis
 
-ward_mode <- "auto"  # "auto" or "manual"
+ward_selection_mode <- "auto"  # "auto" or "manual"
 
-manual_wards <- c( # select as many or as few wards as you would like to see
+user_selected_wards <- c( # select as many or as few wards as you would like to see
   "Eyres Monsell", 
   "Wycliffe",
   "Evington"
 )
+
+# ============================================
+# 1.2 PARAMETER VALIDATION (DO NOT EDIT)
+# ============================================
+
+if (!ward_selection_mode %in% c("auto", "manual")) {
+  stop("ward_selection_mode must be 'auto' or 'manual'")
+}
+
+if (!is.character(multi_domains_to_compare) || length(multi_domains_to_compare) < 1) {
+  stop("multi_domains_to_compare must be a character vector")
+}
 
 # ================================
 # 2. DOWNLOAD DATA
@@ -67,7 +80,7 @@ imd <- read_excel(file_path) %>%
 # 5. VALIDATE INPUT
 # ================================
 
-required_cols <- c("ward_name", multi_domains)
+required_cols <- c("ward_name", multi_domains_to_compare)
 
 missing <- setdiff(required_cols, names(imd))
 if (length(missing) > 0) {
@@ -79,7 +92,7 @@ if (length(missing) > 0) {
 # ================================
 
 multi_domain <- imd %>%
-  select(ward_name, all_of(multi_domains)) %>%
+  select(ward_name, all_of(multi_domains_to_compare)) %>%
   group_by(ward_name) %>%
   summarise(
     across(everything(), ~ mean(.x, na.rm = TRUE)),
@@ -87,7 +100,7 @@ multi_domain <- imd %>%
   ) %>%
   mutate(
     across(
-      all_of(multi_domains),
+      all_of(multi_domains_to_compare),
       ~ (.x - mean(.x)) / sd(.x),
       .names = "{.col}_z"
     )
@@ -108,10 +121,10 @@ multi_domain <- imd %>%
 # ================================
 
 reference_domain <- str_to_title(
-  str_replace_all(multi_domains[1], "_score", "")
+  str_replace_all(multi_domains_to_compare[1], "_score", "")
 )
 
-if (ward_mode == "auto") {
+if (ward_selection_mode == "auto") {
   
   selected_wards <- multi_domain %>%
     filter(domain_label == reference_domain) %>%
@@ -130,17 +143,17 @@ if (ward_mode == "auto") {
   
   message("AUTO mode | Reference domain: ", reference_domain)
   
-} else if (ward_mode == "manual") {
+} else if (user_selection_mode == "manual") {
   
   valid_wards <- unique(multi_domain$ward_name)
   
-  invalid <- setdiff(manual_wards, valid_wards)
+  invalid <- setdiff(user_selected_wards, valid_wards)
   
   if (length(invalid) > 0) {
     stop(paste("Invalid wards:", paste(invalid, collapse = ", ")))
   }
   
-  selected_wards <- manual_wards
+  selected_wards <- user_selected_wards
   
   message("MANUAL mode")
   
