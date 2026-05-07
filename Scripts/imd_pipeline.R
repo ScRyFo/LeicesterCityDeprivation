@@ -252,7 +252,22 @@ ggplot(multi_domain_plot, aes(
     size = 3
   ) +
   
-  geom_vline(xintercept = 0, linetype = "dashed") +
+  geom_vline(
+    xintercept = 0,
+    linetype = "dashed",
+    linewidth = 0.8
+  ) +
+  
+  annotate(
+    "text",
+    x = 0,
+    y = -Inf,
+    label = "Leicester Average",
+    vjust = 2.5,
+    fontface = "italic",
+    size = 3,
+    colour = "black"
+  ) +
   
   scale_fill_manual(values = domain_colours) +
   
