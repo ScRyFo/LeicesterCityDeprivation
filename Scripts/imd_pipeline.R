@@ -11,7 +11,7 @@
 # 1 USER-SELECTION PARAMETERS
 # ================================
 
-#year <- 2025
+year <- 2025
 # Only relevant if the raw data has multiple years of data in it
 
 multi_domains_to_compare <- c("income_score", "health_score") # change these if necessary
@@ -181,7 +181,7 @@ multi_domain_plot <- multi_domain_plot %>%
 # 10. CORRELATION
 # ================================
 
-if (length(multi_domains) == 2) {
+if (length(multi_domains_to_compare) == 2) {
   
   cor_data <- multi_domain %>%
     select(ward_name, domain_label, z_score) %>%
@@ -227,7 +227,7 @@ title_text <- paste0(
       str_to_title(str_replace_all(dom, "_score", "")),
       "</span>"
     )
-  }, multi_domains, domain_colours),
+  }, multi_domains_to_compare, domain_colours),
   collapse = " and "
 )
 
